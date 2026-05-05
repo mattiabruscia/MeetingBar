@@ -47,8 +47,6 @@ public class EventManager: ObservableObject {
 
     public func changeEventStoreProvider(_ newProvider: EventStoreProvider, withSignOut: Bool = false) async {
         Defaults[.eventStoreProvider] = newProvider
-        Defaults[.selectedCalendarIDs] = []
-        calendars = []
 
         if withSignOut {
             await provider.signOut()
@@ -56,13 +54,13 @@ public class EventManager: ObservableObject {
 
         await configureProvider(newProvider)
 
-        // immediately reload everything
-        do {
-            try await provider.signIn(forcePrompt: false)
-            refreshSubject.send()
-        } catch {
-            NSLog("Error after switching provider: \(error)")
-        }
+        // Reset AFTER provider switch so the defaultsPub Combine trigger fires with the correct provider,
+        // avoiding a race where two concurrent signIn() calls compete for currentAuthorizationFlow.
+        Defaults[.selectedCalendarIDs] = []
+        calendars = []
+
+        // fetchAllCalendars() → ensureSignedIn() handles sign-in with signInTask deduplication.
+        refreshSubject.send()
     }
 
     private func configureProvider(_ providerName: EventStoreProvider) async {
